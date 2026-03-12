@@ -53,6 +53,7 @@ draw_acces_granted proc
     mov dx, offset success_message
     int 21h
     call dos_exit
+    ret
 
 @@reject:
     call draw_acces_denied
