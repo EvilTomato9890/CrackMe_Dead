@@ -21,9 +21,13 @@ start:
 
     call arm_success_state
     call draw_acces_granted
+    jmp  @@program_exit
 
 @@denied:
     call draw_acces_denied
+
+@@program_exit:
+    call dos_exit
 
 init_runtime proc
     push cs
