@@ -8,9 +8,12 @@ PASSWORD_LEN  equ 12
 EXPLOIT_INPUT_LEN equ 32
 CAESAR_SHIFT  equ 3
 
-MAGIC_ONE     equ 0B16Bh
-MAGIC_TWO     equ 0C0DEh
 EXPLOIT_DIGEST equ 09Dh
+
+INPUT_READY    equ 11h
+AUTH_VERIFIED  equ 22h
+GRANT_PENDING  equ 33h
+GRANT_CONSUMED equ 44h
 
 start:
     call init_runtime
@@ -59,32 +62,51 @@ invoke_vulnerable_path proc
     ret
 invoke_vulnerable_path endp
 
-check_flags proc
-    mov  al, [flag_one]
-    cmp  al, 11h
-    jne  check_flags_bad
-    mov  al, [flag_two]
-    cmp  al, 22h
-    jne  check_flags_bad
-    mov  al, [flag_three]
-    cmp  al, 33h
-    jne  check_flags_bad
+check_pre_grant_state proc
+    mov  al, [input_state]
+    cmp  al, INPUT_READY
+    jne  check_pre_grant_state_bad
+    mov  al, [auth_state]
+    cmp  al, AUTH_VERIFIED
+    jne  check_pre_grant_state_bad
+    mov  al, [grant_state]
+    cmp  al, GRANT_PENDING
+    jne  check_pre_grant_state_bad
     mov  dx, 0001h
     ret
 
-check_flags_bad:
+check_pre_grant_state_bad:
     xor  dx, dx
     ret
-check_flags endp
+check_pre_grant_state endp
+
+check_post_grant_state proc
+    mov  al, [input_state]
+    cmp  al, INPUT_READY
+    jne  check_post_grant_state_bad
+    mov  al, [auth_state]
+    cmp  al, AUTH_VERIFIED
+    jne  check_post_grant_state_bad
+    mov  al, [grant_state]
+    cmp  al, GRANT_CONSUMED
+    jne  check_post_grant_state_bad
+    mov  dx, 0001h
+    ret
+
+check_post_grant_state_bad:
+    xor  dx, dx
+    ret
+check_post_grant_state endp
 
 grant_wrapper proc
-    call check_flags
+    call check_pre_grant_state
     test dx, dx
     jnz  grant_wrapper_after_first_check
     jmp  exploit_fail
 grant_wrapper_after_first_check:
+    mov  byte ptr [grant_state], GRANT_CONSUMED
     call draw_acces_granted
-    call check_flags
+    call check_post_grant_state
     test dx, dx
     jnz  grant_wrapper_after_second_check
     jmp  exploit_fail
@@ -111,9 +133,8 @@ validate_password_loop:
     loop validate_password_loop
 
 validate_password_success_tail:
-    mov  byte ptr [flag_one], 11h
-    mov  byte ptr [flag_two], 22h
-    mov  byte ptr [flag_three], 33h
+    mov  byte ptr [auth_state], AUTH_VERIFIED
+    mov  byte ptr [grant_state], GRANT_PENDING
     mov  dx, 0001h
     ret
 
@@ -121,15 +142,6 @@ validate_password_fail:
     xor  dx, dx
     ret
 validate_password endp
-
-magic_gate_one proc
-    pop  ax
-    cmp  ax, MAGIC_ONE
-    je   magic_gate_one_ok
-    jmp  exploit_fail
-magic_gate_one_ok:
-    ret
-magic_gate_one endp
 
 checksum_gate proc
     push si
@@ -162,15 +174,6 @@ checksum_gate_fail:
     jmp  exploit_fail
 checksum_gate endp
 
-magic_gate_two proc
-    pop  bx
-    cmp  bx, MAGIC_TWO
-    je   magic_gate_two_ok
-    jmp  exploit_fail
-magic_gate_two_ok:
-    ret
-magic_gate_two endp
-
 stage_loader proc
     jmp  validate_password_success_tail
 stage_loader endp
@@ -182,6 +185,10 @@ take_password_and_check proc
     push bp
     mov  bp, sp
     sub  sp, LOCAL_BUF_LEN
+
+    mov  byte ptr [input_state], 0
+    mov  byte ptr [auth_state], 0
+    mov  byte ptr [grant_state], 0
 
     mov  ah, 09h
     mov  dx, offset prompt_message
@@ -198,6 +205,7 @@ take_password_and_check proc
     jc   take_password_and_check_fail
 
     mov  [last_input_len], ax
+    mov  byte ptr [input_state], INPUT_READY
 
     call validate_password
 
@@ -219,9 +227,9 @@ prompt_message     db "Password: $"
 success_message    db 0Dh, 0Ah, "acces granted$"
 fail_message       db 0Dh, 0Ah, "failed$"
 
-flag_one           db 0
-flag_two           db 0
-flag_three         db 0
+input_state        db 0
+auth_state         db 0
+grant_state        db 0
 
 last_input_ptr     dw 0
 last_input_len     dw 0
