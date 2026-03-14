@@ -204,6 +204,24 @@ take_password_and_check proc
     int  21h
     jc   take_password_and_check_fail
 
+trim_input_tail:
+    test ax, ax
+    jz   trim_input_done
+    mov  si, dx
+    add  si, ax
+    dec  si
+    mov  bl, [si]
+    cmp  bl, 0Dh
+    je   trim_input_drop_last
+    cmp  bl, 0Ah
+    je   trim_input_drop_last
+    jmp  trim_input_done
+
+trim_input_drop_last:
+    dec  ax
+    jmp  trim_input_tail
+
+trim_input_done:
     mov  [last_input_len], ax
     mov  byte ptr [input_state], INPUT_READY
 
