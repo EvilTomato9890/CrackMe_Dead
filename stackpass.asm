@@ -3,7 +3,7 @@
 org 100h
 LOCALS @@
 
-PASSWORD_LEN equ 5
+PASSWORD_LEN equ 9
 READ_CHUNK   equ 128
 
 start:
@@ -53,6 +53,8 @@ draw_acces_not_granted endp
 ; This avoids corrupting the target area with the interrupt's own stack frames.
 take_password proc
     mov  bp, sp
+    mov  word ptr [typed_len], 0
+    mov  byte ptr [input_terminated], 0
 
     mov  ah, 09h
     mov  dx, offset prompt_message
@@ -74,11 +76,16 @@ take_password proc
 
 @@copy_loop:
     lodsb
-    cmp  al, 0Dh
-    je   @@done_input
     dec  sp
     mov  bx, sp
     mov  ss:[bx], al
+    cmp  al, 0Dh
+    jne  @@copy_next
+    mov  byte ptr [input_terminated], 1
+    jmp  @@done_input
+
+@@copy_next:
+    inc  word ptr [typed_len]
     loop @@copy_loop
 
     jmp  @@read_loop
@@ -97,6 +104,11 @@ take_password proc
 take_password endp
 
 check_password proc
+    cmp  byte ptr [input_terminated], 1
+    jne  @@return_false
+    cmp  word ptr [typed_len], PASSWORD_LEN
+    jne  @@return_false
+
     mov  si, bx
     mov  di, offset correct_password
     mov  cx, PASSWORD_LEN
@@ -124,6 +136,8 @@ success_message  db 0Dh, 0Ah, "acces granted$"
 fail_message     db 0Dh, 0Ah, "Access denied$"
 
 read_buffer      db READ_CHUNK dup (0)
-correct_password db "Porno"
+typed_len        dw 0
+correct_password db "StackDead"
+input_terminated db 0
 
 end start
